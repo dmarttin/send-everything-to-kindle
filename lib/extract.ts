@@ -100,6 +100,15 @@ function isThreadUrl(url: string): boolean {
   }
 }
 
+function isSubstackUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith("substack.com");
+  } catch {
+    return false;
+  }
+}
+
 async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -145,6 +154,74 @@ function wrapPlainText(text: string): string {
   return paragraphs || "<p>Unable to extract content.</p>";
 }
 
+function readMetaContent(document: Document, name: string, attr: "name" | "property" = "name") {
+  return document.querySelector(`meta[${attr}=\"${name}\"]`)?.getAttribute("content") ?? "";
+}
+
+function normalizeSubstackImages(container: HTMLElement) {
+  const images = container.querySelectorAll("img");
+  images.forEach((img) => {
+    const dataSrc = img.getAttribute("data-src");
+    if (!img.getAttribute("src") && dataSrc) {
+      img.setAttribute("src", dataSrc);
+    }
+  });
+}
+
+function extractSubstackFromDom(dom: JSDOM, sourceUrl: string): NormalizedContent | null {
+  const document = dom.window.document;
+  const contentEl =
+    document.querySelector("div.body.markup") ||
+    document.querySelector("div.available-content") ||
+    document.querySelector("article");
+
+  if (!contentEl) {
+    return null;
+  }
+
+  const cloned = contentEl.cloneNode(true) as HTMLElement;
+  cloned.querySelectorAll("[class*=\"subscribe\"], [class*=\"cta\"], [class*=\"subscription\"]").forEach((el) => {
+    el.remove();
+  });
+  normalizeSubstackImages(cloned);
+
+  const title =
+    document.querySelector("h1.post-title")?.textContent?.trim() ||
+    readMetaContent(document, "og:title", "property") ||
+    document.title ||
+    new URL(sourceUrl).hostname;
+
+  const author =
+    readMetaContent(document, "author") ||
+    document.querySelector("span.author-name")?.textContent?.trim() ||
+    null;
+
+  const cleaned = sanitizeContent(cloned.innerHTML, sourceUrl);
+
+  return {
+    title,
+    author,
+    sourceUrl,
+    contentHtml: cleaned,
+  };
+}
+
+async function extractTwitterContent(
+  sourceUrl: string,
+  documentTitle: string,
+): Promise<NormalizedContent> {
+  const text = await fetchJinaText(sourceUrl).catch(() => "");
+  const cleaned = wrapPlainText(text);
+  const title = documentTitle || "Thread from X";
+
+  return {
+    title,
+    author: null,
+    sourceUrl,
+    contentHtml: cleaned,
+  };
+}
+
 export async function extractContent(sourceUrl: string): Promise<NormalizedContent> {
   let html = "";
   try {
@@ -161,6 +238,19 @@ export async function extractContent(sourceUrl: string): Promise<NormalizedConte
 
   const dom = new JSDOM(html, { url: sourceUrl });
   const documentTitle = dom.window.document.title || new URL(sourceUrl).hostname;
+  const isSubstack = isSubstackUrl(sourceUrl) || html.includes("substackcdn.com");
+
+  if (isSubstack) {
+    const substack = extractSubstackFromDom(dom, sourceUrl);
+    if (substack) {
+      return substack;
+    }
+  }
+
+  if (isThreadUrl(sourceUrl)) {
+    return extractTwitterContent(sourceUrl, documentTitle);
+  }
+
   const reader = new Readability(dom.window.document);
   const article = reader.parse();
 

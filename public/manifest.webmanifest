@@ -1,0 +1,25 @@
+{
+  "name": "Send Everything to Kindle",
+  "short_name": "Send to Kindle",
+  "start_url": "/send",
+  "display": "standalone",
+  "background_color": "#f7f1e6",
+  "theme_color": "#f7f1e6",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

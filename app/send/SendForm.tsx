@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type ApiResponse = {
   ok: boolean;
@@ -88,12 +89,23 @@ export default function SendForm() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState("kindle-export.epub");
   const [isPending, setIsPending] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
   const downloadRef = useRef<string | null>(null);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setHistory(loadHistory());
     setKindleEmail(loadKindleEmail());
+    setHasLoaded(true);
   }, []);
+
+  useEffect(() => {
+    const sharedUrl = searchParams.get("url");
+    if (sharedUrl && url === "") {
+      setUrl(sharedUrl);
+    }
+  }, [searchParams, url]);
 
   useEffect(() => {
     saveHistory(history);
@@ -116,8 +128,7 @@ export default function SendForm() {
     };
   }, [downloadUrl]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitRequest = useCallback(async () => {
     setIsPending(true);
     setNotice(null);
     setNoticeTone(null);
@@ -176,7 +187,21 @@ export default function SendForm() {
     } finally {
       setIsPending(false);
     }
+  }, [url, kindleEmail]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await submitRequest();
   };
+
+  useEffect(() => {
+    const auto = searchParams.get("auto") === "1";
+    if (!auto || !hasLoaded || hasAutoSubmitted || !url || isPending) {
+      return;
+    }
+    setHasAutoSubmitted(true);
+    void submitRequest();
+  }, [searchParams, hasLoaded, hasAutoSubmitted, url, isPending, submitRequest]);
 
   return (
     <div className="form-stack">

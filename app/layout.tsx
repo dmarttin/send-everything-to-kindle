@@ -18,6 +18,10 @@ const body = Work_Sans({
 export const metadata: Metadata = {
   title: "Send Everything to Kindle",
   description: "Send any article, thread, or URL to your Kindle in one step.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
